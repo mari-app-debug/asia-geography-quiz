@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>アジア地理マスター！</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"M PLUS Rounded 1c"', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: '#FF6B6B',
+                        secondary: '#4ECDC4',
+                        accent: '#FFE66D',
+                        dark: '#292F36'
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;700;900&display=swap" rel="stylesheet">
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
+    <!-- Confetti JS -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; 
+        }
+
+        /* Map styling */
+        .leaflet-container {
+            font-family: 'M PLUS Rounded 1c', sans-serif;
+            background: #aad3df; /* ocean color */
+        }
+        
+        /* Glassmorphism */
+        .glass {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        /* Fade in up animation */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(15px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .animate-fade-in-up {
+            animation: fadeInUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            opacity: 0;
+        }
+
+        /* Smooth score update */
+        .score-update {
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+    </style>
+</head>
+<body class="h-screen w-screen overflow-hidden bg-slate-50 flex flex-col text-slate-800">
+
+    <!-- Header -->
+    <header class="absolute top-0 left-0 w-full z-[1000] p-4 sm:p-6 pointer-events-none flex justify-center">
+        <div class="glass w-full max-w-lg rounded-full py-3 px-6 sm:px-8 shadow-[0_8px_30px_rgba(0,0,0,0.12)] flex justify-between items-center pointer-events-auto border-b-4 border-slate-200/50">
+            <h1 class="text-xl sm:text-2xl font-black text-primary drop-shadow-sm flex items-center gap-2">
+                <span class="text-2xl sm:text-3xl">🌏</span> アジア地理マスター
+            </h1>
+            <div class="font-black text-slate-500 bg-white px-4 py-1.5 rounded-full shadow-inner flex items-center gap-2 border-2 border-slate-100">
+                スコア <span id="score" class="text-secondary text-2xl score-update inline-block">0</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Top Half: Map -->
+    <div id="map" class="flex-1 w-full z-0 relative shadow-inner"></div>
+
+    <!-- Bottom Half: Quiz Area -->
+    <div class="h-[48vh] min-h-[350px] bg-slate-50 rounded-t-[40px] shadow-[0_-20px_50px_rgba(0,0,0,0.15)] z-[1000] relative flex flex-col p-6 sm:p-8 transition-transform duration-300">
+        
+        <!-- Decorative handle -->
+        <div class="w-16 h-1.5 bg-slate-300 rounded-full mx-auto mb-6"></div>
+
+        <div class="text-center mb-5">
+            <h2 class="text-2xl sm:text-3xl font-black text-dark tracking-wide mb-1 flex justify-center items-center gap-2">
+                <span class="text-primary animate-bounce">📍</span> この国はどこでしょう？
+            </h2>
+            <p class="text-slate-500 font-bold text-sm sm:text-base">地図のマーカーの国と首都を選んでね！</p>
+        </div>
+
+        <!-- Options Grid -->
+        <div id="options-container" class="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 overflow-y-auto pb-4 px-1 sm:px-4">
+            <!-- Buttons will be generated here -->
+        </div>
+    </div>
+
+    <!-- Modal for Wrong Answer -->
+    <div id="feedback-modal" class="fixed inset-0 z-[2000] hidden flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-slate-900/40 backdrop-blur-sm modal-bg"></div>
+        <div class="bg-white rounded-[2rem] p-8 max-w-sm w-full shadow-2xl relative z-10 transform transition-all scale-95 opacity-0 duration-300" id="modal-content">
+            
+            <div id="modal-icon-container" class="w-24 h-24 mx-auto bg-red-100 rounded-full flex items-center justify-center mb-4 shadow-inner">
+                <span id="modal-icon" class="text-5xl drop-shadow-md">😅</span>
+            </div>
+
+            <h3 id="modal-title" class="text-2xl font-black text-center text-slate-800 mb-2">おしい！</h3>
+            <p id="modal-subtitle" class="text-center text-slate-500 mb-5 font-bold">正解はこちらでした：</p>
+            
+            <div class="bg-blue-50 rounded-[1.5rem] p-5 mb-6 border-2 border-blue-100 relative overflow-hidden">
+                <div class="absolute -top-4 -right-4 text-blue-100 text-6xl opacity-50 font-black">?</div>
+                <p class="text-center text-2xl font-black text-blue-600 mb-1 relative z-10" id="correct-country"></p>
+                <p class="text-center text-base font-bold text-blue-400 mb-4 relative z-10" id="correct-capital"></p>
+                
+                <div class="bg-white rounded-xl p-4 shadow-sm relative z-10 border border-blue-50">
+                    <p class="text-xs text-slate-400 font-black mb-2 flex items-center gap-1">
+                        <span class="text-accent text-lg">💡</span> 覚え方のアドバイス
+                    </p>
+                    <p class="text-sm font-bold text-slate-700 leading-relaxed" id="mnemonic-text"></p>
+                </div>
+            </div>
+
+            <button onclick="closeModalAndNext()" class="w-full bg-secondary hover:bg-[#3dbdb4] text-white font-black py-4 rounded-2xl shadow-[0_6px_0_#2b9e96] active:shadow-none active:translate-y-[6px] transition-all text-lg tracking-wide flex justify-center items-center gap-2">
+                わかった！次へ <span class="text-xl">👉</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
+    <!-- App Logic -->
+    <script>
+        // --- データ要件 ---
+        // アジアの国々（ダミーデータとして10カ国。24カ国まで簡単に追加可能）
+        const allCountries = [
+            { name: "中国", capital: "北京", lat: 35.86166, lng: 104.195397, mnemonic: "大きな【中国】で【北京】ダックをいっぱい食べる！🦆" },
+            { name: "韓国", capital: "ソウル", lat: 35.907757, lng: 127.766922, mnemonic: "【韓国】の【ソウル】ミュージックでノリノリ♪🎵" },
+            { name: "インド", capital: "ニューデリー", lat: 20.593684, lng: 78.96288, mnemonic: "【インド】で【ニュー】な【デリー】シャスカレーを発見！🍛" },
+            { name: "タイ", capital: "バンコク", lat: 15.870032, lng: 100.992541, mnemonic: "【タイ】の【バンコク】でびっくりして大声で叫ぶ！😱" },
+            { name: "ベトナム", capital: "ハノイ", lat: 14.058324, lng: 108.277199, mnemonic: "【ベトナム】の【ハノイ】で「はー、のんびり」リラックス🌿" },
+            { name: "インドネシア", capital: "ジャカルタ", lat: -0.789275, lng: 113.921327, mnemonic: "【インドネシア】の【ジャカルタ】でじゃがいもを狩る！🥔" },
+            { name: "フィリピン", capital: "マニラ", lat: 12.879721, lng: 121.774017, mnemonic: "【フィリピン】で【マニラ】（バニラ）アイスを食べる🍦" },
+            { name: "サウジアラビア", capital: "リヤド", lat: 23.885942, lng: 45.079162, mnemonic: "【サウジアラビア】で【リヤド】（リアド）カーに乗る🚙" },
+            { name: "マレーシア", capital: "クアラルンプール", lat: 4.210484, lng: 101.975766, mnemonic: "【マレーシア】の【クアラルンプール】でコアラがプールで泳ぐ！🐨" },
+            { name: "モンゴル", capital: "ウランバートル", lat: 46.862496, lng: 103.846656, mnemonic: "【モンゴル】の【ウランバートル】でウラバンチョーとバトル！🥊" },
+            // ↓ ここに残り14カ国を追加してください
+            /*
+            { name: "国名", capital: "首都名", lat: 緯度, lng: 経度, mnemonic: "語呂合わせ" },
+            */
+        ];
+
+        let currentQuestion = null;
+        let score = 0;
+        let map;
+        let marker;
+
+        // 地図の初期化
+        function initMap() {
+            // スクロールズームなどは無効にして、ハイライトに集中させる
+            map = L.map('map', {
+                zoomControl: false,
+                attributionControl: false,
+                scrollWheelZoom: false,
+                doubleClickZoom: false,
+                dragging: true // ドラッグは許可
+            }).setView([20, 100], 4);
+
+            // OpenStreetMapのタイルレイヤーを使用（APIキー不要）
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
+        }
+
+        // 目立つマーカーの作成
+        function createPingMarker(lat, lng) {
+            const pingIcon = L.divIcon({
+                className: 'custom-ping-marker',
+                html: `
+                    <div class="relative flex h-16 w-16 items-center justify-center -translate-x-1/2 -translate-y-1/2">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-60"></span>
+                      <span class="relative inline-flex rounded-full h-6 w-6 bg-primary border-4 border-white shadow-[0_0_15px_rgba(255,107,107,0.8)]"></span>
+                    </div>
+                `,
+                iconSize: [64, 64],
+                iconAnchor: [32, 32]
+            });
+            return L.marker([lat, lng], { icon: pingIcon });
+        }
+
+        // 配列シャッフル
+        function shuffle(array) {
+            return array.sort(() => Math.random() - 0.5);
+        }
+
+        // 問題生成
+        function generateQuestion() {
+            // ランダムに正解の国を選ぶ
+            const randIndex = Math.floor(Math.random() * allCountries.length);
+            currentQuestion = allCountries[randIndex];
+
+            // ダミーの選択肢（間違い）を4つ選ぶ
+            const distractors = allCountries.filter((c, i) => i !== randIndex);
+            const selectedDistractors = shuffle(distractors).slice(0, 4);
+
+            // 5つの選択肢を混ぜる
+            const options = shuffle([currentQuestion, ...selectedDistractors]);
+
+            updateUI(options);
+            updateMap(currentQuestion);
+        }
+
+        // 地図の更新（ズームとパン）
+        function updateMap(country) {
+            if (marker) {
+                map.removeLayer(marker);
+            }
+            
+            // 対象国にパンとズーム
+            map.flyTo([country.lat, country.lng], 5, {
+                animate: true,
+                duration: 1.5,
+                easeLinearity: 0.25
+            });
+
+            // パンが終わる頃にマーカーを表示
+            setTimeout(() => {
+                marker = createPingMarker(country.lat, country.lng).addTo(map);
+            }, 800);
+        }
+
+        // UI（選択肢ボタン）の更新
+        function updateUI(options) {
+            const container = document.getElementById('options-container');
+            container.innerHTML = '';
+
+            options.forEach((opt, index) => {
+                const btn = document.createElement('button');
+                // モダンでリッチなボタンデザイン
+                btn.className = `
+                    option-btn group relative w-full text-left bg-white border-2 border-slate-100 
+                    hover:border-secondary rounded-[1.25rem] p-4 transition-all duration-300 
+                    shadow-sm hover:shadow-[0_8px_25px_rgba(78,205,196,0.25)] hover:-translate-y-1 
+                    overflow-hidden animate-fade-in-up focus:outline-none focus:ring-4 focus:ring-secondary/30
+                `;
+                btn.style.animationDelay = `${index * 60}ms`;
+                btn.onclick = () => checkAnswer(opt, btn);
+                
+                btn.innerHTML = `
+                    <div class="relative z-10 flex items-center justify-between">
+                        <div>
+                            <span class="block text-lg sm:text-xl font-black text-slate-700 group-hover:text-secondary transition-colors country-name">${opt.name}</span>
+                            <span class="block text-sm font-bold text-slate-400 mt-1 flex items-center gap-1">
+                                <span class="w-1.5 h-1.5 rounded-full bg-slate-300 group-hover:bg-secondary"></span> 首都: ${opt.capital}
+                            </span>
+                        </div>
+                        <div class="w-12 h-12 rounded-full bg-slate-50 group-hover:bg-secondary/10 flex items-center justify-center text-slate-400 group-hover:text-secondary transition-colors font-black text-lg border-2 border-transparent group-hover:border-secondary/20">
+                            ${index + 1}
+                        </div>
+                    </div>
+                `;
+                container.appendChild(btn);
+            });
+        }
+
+        // 答え合わせ
+        function checkAnswer(selected, buttonElement) {
+            // 連打防止のためすべてのボタンを無効化
+            const buttons = document.querySelectorAll('.option-btn');
+            buttons.forEach(btn => {
+                btn.disabled = true;
+                btn.classList.remove('hover:-translate-y-1', 'hover:shadow-[0_8px_25px_rgba(78,205,196,0.25)]', 'cursor-pointer');
+            });
+
+            if (selected.name === currentQuestion.name) {
+                // 正解
+                buttonElement.classList.add('bg-green-50', 'border-green-400', 'shadow-[0_0_20px_rgba(74,222,128,0.3)]');
+                buttonElement.querySelector('.country-name').classList.add('text-green-600');
+                handleCorrect();
+            } else {
+                // 不正解
+                buttonElement.classList.add('bg-red-50', 'border-red-400');
+                buttonElement.querySelector('.country-name').classList.add('text-red-500');
+                
+                // 正解のボタンもハイライトしてあげる
+                buttons.forEach(btn => {
+                    if (btn.innerText.includes(currentQuestion.name)) {
+                        btn.classList.add('bg-green-50', 'border-green-400', 'opacity-80');
+                        btn.querySelector('.country-name').classList.add('text-green-600');
+                    }
+                });
+                
+                setTimeout(() => {
+                    showModal(false);
+                }, 500);
+            }
+        }
+
+        // 正解時の処理
+        function handleCorrect() {
+            // スコアアップのアニメーション
+            score += 10;
+            const scoreEl = document.getElementById('score');
+            scoreEl.innerText = score;
+            scoreEl.classList.add('text-green-500', 'scale-150', 'rotate-6');
+            setTimeout(() => {
+                scoreEl.classList.remove('text-green-500', 'scale-150', 'rotate-6');
+            }, 400);
+
+            // 紙吹雪エフェクト (WOW! UX)
+            var duration = 2000;
+            var end = Date.now() + duration;
+
+            (function frame() {
+                confetti({
+                    particleCount: 5,
+                    angle: 60,
+                    spread: 55,
+                    origin: { x: 0, y: 0.8 },
+                    colors: ['#FF6B6B', '#4ECDC4', '#FFE66D']
+                });
+                confetti({
+                    particleCount: 5,
+                    angle: 120,
+                    spread: 55,
+                    origin: { x: 1, y: 0.8 },
+                    colors: ['#FF6B6B', '#4ECDC4', '#FFE66D']
+                });
+
+                if (Date.now() < end) {
+                    requestAnimationFrame(frame);
+                }
+            }());
+
+            // 紙吹雪が少し舞ったあとに正解モーダルを表示
+            setTimeout(() => {
+                showModal(true);
+            }, 1000);
+        }
+
+        // モーダル表示処理（正解・不正解共通）
+        function showModal(isCorrect) {
+            const modal = document.getElementById('feedback-modal');
+            const content = document.getElementById('modal-content');
+            
+            document.getElementById('correct-country').innerText = `${currentQuestion.name}`;
+            document.getElementById('correct-capital').innerText = `首都: ${currentQuestion.capital}`;
+            document.getElementById('mnemonic-text').innerText = currentQuestion.mnemonic;
+
+            const iconContainer = document.getElementById('modal-icon-container');
+            const icon = document.getElementById('modal-icon');
+            const title = document.getElementById('modal-title');
+            const subtitle = document.getElementById('modal-subtitle');
+            
+            if (isCorrect) {
+                iconContainer.className = 'w-24 h-24 mx-auto bg-green-100 rounded-full flex items-center justify-center mb-4 shadow-inner';
+                icon.innerText = '🎉';
+                title.innerText = '大正解！';
+                title.className = 'text-3xl font-black text-center text-green-500 mb-2';
+                subtitle.innerText = 'お見事！覚え方も確認しておこう：';
+            } else {
+                iconContainer.className = 'w-24 h-24 mx-auto bg-red-100 rounded-full flex items-center justify-center mb-4 shadow-inner';
+                icon.innerText = '😅';
+                title.innerText = 'おしい！';
+                title.className = 'text-2xl font-black text-center text-slate-800 mb-2';
+                subtitle.innerText = '正解はこちらでした：';
+            }
+
+            modal.classList.remove('hidden');
+            // reflow
+            void modal.offsetWidth;
+            content.classList.remove('scale-95', 'opacity-0');
+            content.classList.add('scale-100', 'opacity-100');
+        }
+
+        // モーダルを閉じて次の問題へ
+        function closeModalAndNext() {
+            const modal = document.getElementById('feedback-modal');
+            const content = document.getElementById('modal-content');
+            
+            content.classList.remove('scale-100', 'opacity-100');
+            content.classList.add('scale-95', 'opacity-0');
+            
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                generateQuestion();
+            }, 300);
+        }
+
+        // 初期化
+        window.onload = () => {
+            initMap();
+            generateQuestion();
+        };
+
+    </script>
+</body>
+</html>
